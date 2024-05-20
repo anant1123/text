@@ -102,5 +102,3 @@ def index():
 @app.route('/download_pdf/<filename>', methods=['GET'])
 def download_pdf(filename):
     return send_file(filename, as_attachment=True)
-
-
