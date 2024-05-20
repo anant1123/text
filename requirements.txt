@@ -5,4 +5,3 @@ newspaper3k
 regex
 gunicorn
 lxml
-lxml_html_clean
