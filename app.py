@@ -4,27 +4,14 @@ from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.platypus import SimpleDocTemplate, Paragraph
 from newspaper import Article
-import http.client
-import json
+import spacy
 import regex  # Use 'regex' instead of 're'
 
 app = Flask(__name__)
 
-# Function to call the RapidAPI summarization service
-def call_rapidapi_summarizer(text):
-    conn = http.client.HTTPSConnection("text-summerizer1.p.rapidapi.com")
-    payload = json.dumps({"text": text})
-    headers = {
-        'content-type': "application/json",
-        'X-RapidAPI-Key': "2625c67571msh36dec55d7bb5fafp1e3f70jsn481dcf350142",
-        'X-RapidAPI-Host': "text-summerizer1.p.rapidapi.com"
-    }
-    conn.request("POST", "/text", payload, headers)
-    res = conn.getresponse()
-    data = res.read()
-    response_json = json.loads(data.decode("utf-8"))
-    summary = response_json.get('summary', '')
-    return summary
+# Load the spaCy model with 'sentencizer'
+nlp = spacy.load("en_core_web_md", exclude=['parser', 'ner'])
+sentencizer = nlp.add_pipe("sentencizer")
 
 def scrape_text_from_url(url):
     try:
@@ -45,6 +32,17 @@ def extract_text_from_pdf(pdf_file):
         return text
     except Exception as e:
         return f"Error extracting text from PDF: {str(e)}"
+
+def preprocess_text(text):
+    doc = nlp(text)
+    sentences = [sent.text for sent in doc.sents]
+    return sentences
+
+def extractive_summarization(sentences, num_sentences=3):
+    sentence_scores = [(i, sum(token.is_alpha for token in nlp(sentence))) for i, sentence in enumerate(sentences)]
+    summary_sentences = sorted(sentence_scores, key=lambda x: x[1], reverse=True)[:num_sentences]
+    summary = ' '.join(sentences[i] for i, _ in summary_sentences)
+    return summary
 
 def create_pdf(summary):
     pdf_filename = 'summarized_text.pdf'
@@ -85,7 +83,8 @@ def index():
         elif choice == 'text':
             text = request.form.get('user_text')
 
-        summary = call_rapidapi_summarizer(text)
+        sentences = preprocess_text(text)
+        summary = extractive_summarization(sentences)
         cleaned_summary = regex.sub(r'\[\d+\]', '', summary)  # Use 'regex' instead of 're'
 
         # Create a PDF file with the summarized text using ReportLab
@@ -103,3 +102,4 @@ def index():
 @app.route('/download_pdf/<filename>', methods=['GET'])
 def download_pdf(filename):
     return send_file(filename, as_attachment=True)
+
